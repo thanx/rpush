@@ -14,7 +14,7 @@
   * **Windows Phone Push Notification Service**.
 * Seamless Rails (3, 4) integration.
 * Scalable - choose the number of persistent connections for each app.
-* Designed for uptime - signal -HUP to add, update apps.
+* Designed for uptime - signal -HUP to update apps.
 * Run as a daemon or inside an [existing processs](https://github.com/rpush/rpush/wiki/Embedding-API).
 * Use in a scheduler for low-workload deployments ([Push API](https://github.com/rpush/rpush/wiki/Push-API)).
 * Hooks for fine-grained instrumentation and error handling ([Reflection API](https://github.com/rpush/rpush/wiki/Reflection-API)).
