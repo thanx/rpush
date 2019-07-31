@@ -10,6 +10,18 @@
 
 - Switch from ANSI to Rainbow. ([#496](https://github.com/rpush/rpush/pull/496) by [@drn](https://github.com/drn))
 
+- Fix disabling APNS feedback for specific Rpush apps [#511](https://github.com/rpush/rpush/pull/511) (by [@kirbydcool](https://github.com/kirbydcool))
+
+## 4.1.1 (2019-05-13)
+
+### Added
+
+- Allow disabling of APNS feedback for specific Rpush apps [#491](https://github.com/rpush/rpush/pull/491) (by [@drn](https://github.com/drn)).
+
+### Changed
+
+- Switch from ANSI to Rainbow. ([#496](https://github.com/rpush/rpush/pull/496) by [@drn](https://github.com/drn))
+
 ## 4.1.0 (2019-04-17)
 
 ### Added
