@@ -16,6 +16,9 @@ require 'rpush/client/active_record/apns2/app'
 require 'rpush/client/active_record/apnsp8/notification'
 require 'rpush/client/active_record/apnsp8/app'
 
+require 'rpush/client/active_record/fcm/notification'
+require 'rpush/client/active_record/fcm/app'
+
 require 'rpush/client/active_record/gcm/notification'
 require 'rpush/client/active_record/gcm/app'
 
@@ -32,3 +35,6 @@ require 'rpush/client/active_record/adm/app'
 
 require 'rpush/client/active_record/pushy/notification'
 require 'rpush/client/active_record/pushy/app'
+
+require 'rpush/client/active_record/webpush/notification'
+require 'rpush/client/active_record/webpush/app'
