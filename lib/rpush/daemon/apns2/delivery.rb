@@ -1,6 +1,7 @@
 module Rpush
   module Daemon
     module Apns2
+      include Loggable
       # https://developer.apple.com/library/content/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/CommunicatingwithAPNs.html
 
       HTTP2_HEADERS_KEY = 'headers'

@@ -1,6 +1,7 @@
 module Rpush
   class ReflectionCollection
     class NoSuchReflectionError < StandardError; end
+    include Loggable
 
     REFLECTIONS = [
       :apns_feedback, :notification_enqueued, :notification_delivered,
