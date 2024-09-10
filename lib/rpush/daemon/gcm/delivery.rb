@@ -81,6 +81,7 @@ module Rpush
 
         def handle_failures(failures, response)
           if failures[:unavailable].count == @notification.registration_ids.count
+            log_warn("RPush handle_failures[84] - failures[:unavailable].count == @notification.registration_ids.count")
             retry_delivery(@notification, response)
             log_warn("All recipients unavailable. #{retry_message}")
           else
