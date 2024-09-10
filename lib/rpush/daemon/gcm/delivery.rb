@@ -89,6 +89,7 @@ module Rpush
               new_notification = create_new_notification(response, unavailable_idxs)
               failures.description += " #{unavailable_idxs.join(', ')} will be retried as notification #{new_notification.id}."
             end
+            log_warn("RPush handle_failures[92] - failures: #{failures.to_json}")
             handle_errors(failures)
             fail Rpush::DeliveryError.new(nil, @notification.id, failures.description)
           end
@@ -96,9 +97,11 @@ module Rpush
 
         def handle_errors(failures)
           failures.each do |result|
+            log_warn("RPush handle_failures[100] - failures: #{result}")
             reflect(:gcm_failed_to_recipient, @notification, result[:error], result[:registration_id])
           end
           failures[:invalid].each do |result|
+            log_warn("RPush handle_failures[104] - failures[invalid]: #{result}")
             reflect(:gcm_invalid_registration_id, @app, result[:error], result[:registration_id])
           end
         end
