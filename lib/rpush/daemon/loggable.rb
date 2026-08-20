@@ -30,7 +30,7 @@ module Rpush
         parts = ["event=#{event}"]
         parts << "rpush_notification_id=#{notification.id}" if notification
         name = (app || instance_variable_get('@app'))&.name
-        parts << "app=#{name}" unless name.nil?
+        parts << "app=#{push_event_value(name)}" unless name.nil?
         fields.each do |key, value|
           next if value.nil?
           parts << "#{key}=#{push_event_value(value)}"

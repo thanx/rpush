@@ -54,6 +54,12 @@ describe Rpush::Daemon::Loggable do
       obj.log_push_event(:retrying, notification: notification, level: :warn, deliver_after: '2026-08-20 16:21:36')
     end
 
+    it 'quotes the app name when it contains whitespace' do
+      obj = klass.new(double(name: 'My App'))
+      expect(logger).to receive(:info).with('event=delivered rpush_notification_id=42 app="My App"')
+      obj.log_push_event(:delivered, notification: notification)
+    end
+
     it 'omits fields whose value is nil' do
       obj = klass.new(app)
       expect(logger).to receive(:info).with('event=delivered rpush_notification_id=42 app=my_app')
