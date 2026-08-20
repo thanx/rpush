@@ -27,7 +27,10 @@ module Rpush
       private
 
       def fetch_fresh_token(scope, json_key)
-        json_key_io = json_key ? StringIO.new(json_key) : nil
+        # A caller's json_key attribute may come back as an already-parsed Hash
+        # (e.g. from a native json/jsonb DB column, which ActiveRecord deserializes
+        # on read) rather than the raw JSON text StringIO requires.
+        json_key_io = json_key ? StringIO.new(json_key.is_a?(String) ? json_key : json_key.to_json) : nil
         log_debug("FCM - Obtaining access token.")
         authorizer = Google::Auth::ServiceAccountCredentials.make_creds(scope: scope, json_key_io: json_key_io)
         authorizer.fetch_access_token
