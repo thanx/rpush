@@ -9,6 +9,10 @@ module Rpush
         RETRYABLE_CODES = [ 429, 500, 503 ]
         CLIENT_JOIN_TIMEOUT = 60
         DEFAULT_MAX_CONCURRENT_STREAMS = 100
+        # How long to defer a notification whose delivery could not be confirmed at the
+        # transport level: a dropped connection, or a stream that closed with no APNs
+        # status. Matches the existing service-unavailable / connection-error backoff.
+        RECONNECT_RETRY_DELAY = 10.seconds
 
         def initialize(app, http2_client, token_provider, batch)
           @app = app
@@ -25,13 +29,24 @@ module Rpush
 
           # Send all preprocessed requests at once
           @client.join(timeout: CLIENT_JOIN_TIMEOUT)
+
+          # A dropped connection tears down its in-flight streams WITHOUT raising here:
+          # net-http2 hands the socket error to the client's on(:error) callback and #join
+          # returns once the stream set is emptied. Those notifications never received an
+          # on(:close), so they hold no outcome and would be silently discarded when the
+          # batch completes. Re-queue them so the frame lands on a fresh connection instead
+          # of vanishing. No-op on the normal path where every stream reported a result.
+          retry_unresolved
         rescue NetHttp2::AsyncRequestTimeout => error
-          mark_batch_retryable(Time.now + 10.seconds, error)
+          mark_batch_retryable(Time.now + RECONNECT_RETRY_DELAY, error)
           @client.close
           raise
-        rescue Errno::ECONNREFUSED, SocketError, HTTP2::Error::StreamLimitExceeded => error
+        rescue Errno::ECONNREFUSED, SocketError, Errno::ECONNRESET, HTTP2::Error::StreamLimitExceeded => error
           # TODO restart connection when StreamLimitExceeded
-          mark_batch_retryable(Time.now + 10.seconds, error)
+          # ECONNRESET (an established connection reset by the peer) is retryable like a
+          # refused/failed connection: should it ever surface synchronously here rather than
+          # via the async on(:error) path above, it must not fall through to mark_batch_failed.
+          mark_batch_retryable(Time.now + RECONNECT_RETRY_DELAY, error)
           raise
         rescue StandardError => error
           mark_batch_failed(error)
@@ -103,6 +118,11 @@ module Rpush
             ok(notification)
           when *RETRYABLE_CODES
             service_unavailable(notification, response)
+          when nil
+            # The stream closed before any :status header arrived — APNs returned no verdict
+            # (the connection dropped mid-flight). This is a transport failure, not an APNs
+            # rejection, so retry rather than mark it permanently failed.
+            connection_lost(notification)
           else
             reflect(:notification_id_failed,
               @app,
@@ -119,10 +139,25 @@ module Rpush
         end
 
         def service_unavailable(notification, response)
-          @batch.mark_retryable(notification, Time.now + 10.seconds)
+          @batch.mark_retryable(notification, Time.now + RECONNECT_RETRY_DELAY)
           # Logs should go last as soon as we need to initialize
           # retry time to display it in log
           failed_message_to_log(notification, response)
+          retry_message_to_log(notification)
+        end
+
+        # Re-queue every notification the batch never resolved — one whose HTTP/2 stream was
+        # abandoned when the connection dropped, so its on(:close) never fired and it holds no
+        # delivered/failed/retryable outcome. A no-op when every stream reported a result.
+        def retry_unresolved
+          @batch.unresolved.each { |notification| connection_lost(notification) }
+        end
+
+        # A notification with no delivery outcome from APNs: retry it on a fresh connection
+        # rather than discard it. Shared by the mid-flight-drop sweep (#retry_unresolved) and
+        # the no-status branch of #handle_response.
+        def connection_lost(notification)
+          @batch.mark_retryable(notification, Time.now + RECONNECT_RETRY_DELAY)
           retry_message_to_log(notification)
         end
 

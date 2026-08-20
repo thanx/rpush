@@ -27,6 +27,18 @@ module Rpush
         @delivered.each(&blk)
       end
 
+      # Notifications that reached no terminal outcome — neither delivered, failed, nor
+      # retryable. A dropped connection abandons in-flight HTTP/2 streams: their per-request
+      # on(:close) never fires, so nothing is recorded for them and they would be silently
+      # discarded when the batch completes. A transport calls this after a send attempt to
+      # re-queue such notifications rather than lose them. Read-only; safe on any transport.
+      def unresolved
+        @mutex.synchronize do
+          resolved = @delivered + @failed.values.flatten(1) + @retryable.values.flatten(1)
+          @notifications - resolved
+        end
+      end
+
       def mark_retryable(notification, deliver_after)
         @mutex.synchronize do
           @retryable[deliver_after] ||= []
