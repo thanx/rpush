@@ -75,6 +75,14 @@ describe Rpush::Daemon::AppRunner, 'start_app' do
     expect(Rpush.logger).to receive(:error)
     Rpush::Daemon::AppRunner.start_app(app)
   end
+
+  it 'logs a structured startup_failed event when startup raises' do
+    allow(Rpush::Daemon::AppRunner).to receive(:new).with(app).and_return(runner)
+    allow(runner).to receive(:start_dispatchers).and_raise(StandardError, 'bad cert')
+    Rpush::Daemon::AppRunner.start_app(app)
+    expect(Rpush.logger).to have_received(:error)
+      .with('event=startup_failed app=test reason="bad cert"')
+  end
 end
 
 describe Rpush::Daemon::AppRunner, 'debug' do
@@ -139,7 +147,7 @@ describe Rpush::Daemon::AppRunner do
   end
 
   describe 'enqueue' do
-    let(:notification) { double }
+    let(:notification) { double(id: 1) }
 
     it 'enqueues the batch' do
       expect(queue).to receive(:push) do |queue_payload|
@@ -154,9 +162,20 @@ describe Rpush::Daemon::AppRunner do
       runner.enqueue([notification])
     end
 
+    it 'logs a structured enqueued event for each notification' do
+      expect(logger).to receive(:info).with('event=enqueued rpush_notification_id=1 app=test')
+      runner.enqueue([notification])
+    end
+
     describe 'a service that batches deliveries' do
       before do
         allow(runner.send(:service)).to receive_messages(batch_deliveries?: true)
+      end
+
+      it 'logs a structured enqueued event for each notification' do
+        allow(runner).to receive(:num_dispatcher_loops).and_return(1)
+        expect(logger).to receive(:info).with('event=enqueued rpush_notification_id=1 app=test')
+        runner.enqueue([notification])
       end
 
       describe '1 notification with more than one dispatcher loop' do

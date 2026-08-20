@@ -134,16 +134,17 @@ module Rpush
         end
 
         def ok(notification)
-          log_info("#{notification.id} sent to #{notification.device_token}")
+          log_push_event(:delivered, notification: notification,
+            device_token: truncate_device_token(notification.device_token))
           @batch.mark_delivered(notification)
         end
 
         def service_unavailable(notification, response)
           @batch.mark_retryable(notification, Time.now + RECONNECT_RETRY_DELAY)
-          # Logs should go last as soon as we need to initialize
-          # retry time to display it in log
-          failed_message_to_log(notification, response)
-          retry_message_to_log(notification)
+          # A retryable APNs response (429/500/503) is not a failure: log it only as a
+          # retry so the failure signal stays clean. Logs go last, after mark_retryable
+          # has set the deliver_after we want to display.
+          retry_message_to_log(notification, reason: response[:code])
         end
 
         # Re-queue every notification the batch never resolved — one whose HTTP/2 stream was
@@ -158,7 +159,7 @@ module Rpush
         # the no-status branch of #handle_response.
         def connection_lost(notification)
           @batch.mark_retryable(notification, Time.now + RECONNECT_RETRY_DELAY)
-          retry_message_to_log(notification)
+          retry_message_to_log(notification, reason: 'connection_lost')
         end
 
         def build_request(notification)
@@ -193,15 +194,23 @@ module Rpush
           notification.data || {}
         end
 
-        def retry_message_to_log(notification)
-          log_warn("Notification #{notification.id} will be retried after "\
-            "#{notification.deliver_after.strftime('%Y-%m-%d %H:%M:%S')} "\
-            "(retry #{notification.retries}).")
+        def retry_message_to_log(notification, reason:)
+          log_push_event(:retrying, notification: notification, level: :warn,
+            reason: reason,
+            retry: notification.retries,
+            deliver_after: notification.deliver_after&.strftime('%Y-%m-%d %H:%M:%S'))
         end
 
         def failed_message_to_log(notification, response)
-          log_error("Notification #{notification.id} failed, "\
-            "#{response[:code]}/#{response[:failure_reason]}")
+          log_push_event(:failed, notification: notification, level: :error,
+            code: response[:code], reason: response[:failure_reason])
+        end
+
+        # Keep the raw device token out of logs; a short prefix is enough to correlate.
+        def truncate_device_token(token)
+          return token if token.nil? || token.length <= 8
+
+          "#{token[0, 8]}…"
         end
       end
     end
