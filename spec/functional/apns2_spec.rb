@@ -268,10 +268,12 @@ describe 'APNs http2 adapter' do
         expect(fake_client).to receive(:call_async) { raise(OpenSSL::SSL::SSLError) }
       end
 
-      it 'logs the error' do
-        expect(Rpush.logger).to receive(:error)
-        create_notification
-        Rpush.push
+      it 'fails but retries delivery several times' do
+        notification = create_notification
+        expect do
+          Rpush.push
+          notification.reload
+        end.to change(notification, :retries)
       end
     end
 
