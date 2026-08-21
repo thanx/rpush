@@ -34,7 +34,11 @@ module Rpush
           url = URLS[app.environment.to_sym]
           client = NetHttp2::Client.new(url, ssl_context: prepare_ssl_context, connect_timeout: DEFAULT_TIMEOUT)
           client.on(:error) do |error|
-            log_error(error)
+            # Include the message, not just the class: this is the one line meant to make a
+            # mid-flight reset findable by app and time in Datadog, and two different socket
+            # errors of the same class (e.g. two distinct SSLError causes) are otherwise
+            # indistinguishable here.
+            log_push_event(:connection_error, level: :error, error: "#{error.class}: #{error.message}")
             reflect(:error, error)
           end
           client
