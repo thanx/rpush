@@ -33,7 +33,7 @@ module Rpush
         runner.start_loops
       rescue StandardError => e
         @runners.delete(app.id)
-        Rpush.logger.error("[#{app.name}] Exception raised during startup. Notifications will not be delivered for this app.")
+        log_push_event(:startup_failed, app: app, level: :error, reason: e.message)
         Rpush.logger.error(e)
         reflect(:error, e)
       end
@@ -123,11 +123,13 @@ module Rpush
             batch = Batch.new(batch_notifications)
             queue.push(QueuePayload.new(batch))
           end
+          notifications.each { |notification| log_push_event(:enqueued, notification: notification) }
         else
           batch = Batch.new(notifications)
           notifications.each do |notification|
             queue.push(QueuePayload.new(batch, notification))
             reflect(:notification_enqueued, notification)
+            log_push_event(:enqueued, notification: notification)
           end
         end
       end

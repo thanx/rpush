@@ -21,7 +21,33 @@ module Rpush
         end
       end
 
+      # Emit a single structured push-pipeline log line in logfmt-style
+      # `key=value` pairs, so Datadog indexes each field and the lines join to
+      # the nexus push logs on `rpush_notification_id`. Field order is stable:
+      # event, notification id, app, then the caller's fields in the order given.
+      # nil-valued fields are dropped; values with whitespace/`=`/`"` are quoted.
+      def log_push_event(event, app: nil, notification: nil, level: :info, **fields)
+        parts = ["event=#{event}"]
+        parts << "rpush_notification_id=#{notification.id}" if notification
+        name = (app || instance_variable_get('@app'))&.name
+        parts << "app=#{push_event_value(name)}" unless name.nil?
+        fields.each do |key, value|
+          next if value.nil?
+          parts << "#{key}=#{push_event_value(value)}"
+        end
+        Rpush.logger.public_send(level, parts.join(' '))
+      end
+
       private
+
+      def push_event_value(value)
+        # A structured record is one line: fold any newline in the value to a space so a
+        # multi-line message (e.g. an exception) cannot split the record.
+        str = value.to_s.gsub(/[\r\n]+/, ' ')
+        return str unless str.match?(/[\s"=]/)
+
+        %("#{str.gsub('"', '\"')}")
+      end
 
       def app_prefix(msg)
         app = instance_variable_get('@app')

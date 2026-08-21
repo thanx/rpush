@@ -135,6 +135,33 @@ describe Rpush::Daemon::Batch do
     end
   end
 
+  describe 'unresolved' do
+    it 'returns every notification with no outcome' do
+      expect(batch.unresolved).to eq [notification1, notification2]
+    end
+
+    it 'excludes delivered notifications' do
+      batch.mark_delivered(notification1)
+      expect(batch.unresolved).to eq [notification2]
+    end
+
+    it 'excludes failed notifications' do
+      batch.mark_failed(notification1, 400, 'BadDeviceToken')
+      expect(batch.unresolved).to eq [notification2]
+    end
+
+    it 'excludes retryable notifications' do
+      batch.mark_retryable(notification1, time)
+      expect(batch.unresolved).to eq [notification2]
+    end
+
+    it 'returns nothing once every notification resolved' do
+      batch.mark_delivered(notification1)
+      batch.mark_failed(notification2, 400, 'BadDeviceToken')
+      expect(batch.unresolved).to be_empty
+    end
+  end
+
   describe 'complete' do
     before do
       allow(Rpush).to receive_messages(logger: double.as_null_object)
