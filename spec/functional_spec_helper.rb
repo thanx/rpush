@@ -27,6 +27,8 @@ RSpec.configure do |config|
   end
 
   config.after(:each) do
-    DatabaseCleaner.clean if active_record? && functional_example?(self.class.metadata)
+    # Apps live in ActiveRecord under both clients, so clean the RDBMS after every
+    # functional example regardless of the notification store.
+    DatabaseCleaner.clean if functional_example?(self.class.metadata)
   end
 end

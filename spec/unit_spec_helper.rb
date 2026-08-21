@@ -14,14 +14,16 @@ RSpec.configure do |config|
       redis.keys('rpush:*').each { |key| redis.del(key) }
     end if redis? && unit_example?(self.class.metadata)
 
-    if active_record? && unit_example?(self.class.metadata)
+    # Apps live in ActiveRecord under both clients, so wrap every unit example in a
+    # transaction and roll it back, regardless of the notification store.
+    if unit_example?(self.class.metadata)
       connection = ActiveRecord::Base.connection
       connection.begin_transaction joinable: false
     end
   end
 
   config.after(:each) do
-    if active_record? && unit_example?(self.class.metadata)
+    if unit_example?(self.class.metadata)
       connection = ActiveRecord::Base.connection
       connection.rollback_transaction if connection.transaction_open?
     end
