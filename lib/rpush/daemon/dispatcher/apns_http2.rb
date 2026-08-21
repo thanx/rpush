@@ -34,7 +34,7 @@ module Rpush
           url = URLS[app.environment.to_sym]
           client = NetHttp2::Client.new(url, ssl_context: prepare_ssl_context, connect_timeout: DEFAULT_TIMEOUT)
           client.on(:error) do |error|
-            log_error(error)
+            log_push_event(:connection_error, level: :error, error: "#{error.class}: #{error.message}")
             reflect(:error, error)
           end
           client
