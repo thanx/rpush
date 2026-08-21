@@ -41,7 +41,9 @@ module Rpush
       private
 
       def push_event_value(value)
-        str = value.to_s
+        # A structured record is one line: fold any newline in the value to a space so a
+        # multi-line message (e.g. an exception) cannot split the record.
+        str = value.to_s.gsub(/[\r\n]+/, ' ')
         return str unless str.match?(/[\s"=]/)
 
         %("#{str.gsub('"', '\"')}")

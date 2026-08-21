@@ -60,6 +60,12 @@ describe Rpush::Daemon::Loggable do
       obj.log_push_event(:delivered, notification: notification)
     end
 
+    it 'collapses newlines in field values so the record stays one line' do
+      obj = klass.new(app)
+      expect(logger).to receive(:error).with('event=connection_error app=my_app error="a b"')
+      obj.log_push_event(:connection_error, level: :error, error: "a\nb")
+    end
+
     it 'omits fields whose value is nil' do
       obj = klass.new(app)
       expect(logger).to receive(:info).with('event=delivered rpush_notification_id=42 app=my_app')

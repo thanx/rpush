@@ -17,12 +17,12 @@ describe Rpush::Daemon::Dispatcher::Apnsp8Http2 do
   end
 
   describe 'the client error callback' do
-    it 'logs a structured connection_error event when the connection raises a socket error' do
+    it 'logs a structured connection_error event with the error class and message' do
       dispatcher
       allow(dispatcher).to receive(:reflect)
       expect(logger).to receive(:error)
-        .with('event=connection_error app=my_app error=Errno::ECONNRESET')
-      @callbacks[:error].call(Errno::ECONNRESET.new('Connection reset by peer'))
+        .with('event=connection_error app=my_app error="SocketError: Socket was remotely closed"')
+      @callbacks[:error].call(SocketError.new('Socket was remotely closed'))
     end
 
     it 'still reflects the error so upstream handlers fire' do
