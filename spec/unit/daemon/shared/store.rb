@@ -31,12 +31,14 @@ shared_examples 'Rpush::Daemon::Store' do
   end
 
   it 'finds an app by ID' do
-    expect(store.app(app.id)).to eq(app)
+    # Compare by id: the redis store resolves apps from ActiveRecord (this fork's hybrid), so it
+    # returns an ActiveRecord::App representation of the same app the spec created in Redis.
+    expect(store.app(app.id).id).to eq(app.id)
   end
 
   it 'finds all apps' do
     app
-    expect(store.all_apps).to eq([app])
+    expect(store.all_apps.map(&:id)).to eq([app.id])
   end
 
   it 'translates an Integer notification ID' do
