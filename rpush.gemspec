@@ -61,5 +61,9 @@ Gem::Specification.new do |s|
 
   s.add_development_dependency 'pg'
   s.add_development_dependency 'mysql2'
-  s.add_development_dependency 'sqlite3'
+  # Pin to the 1.6.x line: it ships precompiled x86_64-linux binaries for Ruby 2.7
+  # (production's version), so CI installs a prebuilt gem instead of compiling from
+  # source. 1.7+ dropped the precompiled 2.7 build. Only used by the active_record
+  # test client; production rpush uses the redis store.
+  s.add_development_dependency 'sqlite3', '~> 1.6.0'
 end
