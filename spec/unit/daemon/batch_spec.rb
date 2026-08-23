@@ -1,8 +1,8 @@
 require 'unit_spec_helper'
 
 describe Rpush::Daemon::Batch do
-  let(:notification1) { double(:notification1, id: 1, delivered: false, failed: false) }
-  let(:notification2) { double(:notification2, id: 2, delivered: false, failed: false) }
+  let(:notification1) { double(:notification1, id: 1, delivered: false, failed: false, fail_after: nil) }
+  let(:notification2) { double(:notification2, id: 2, delivered: false, failed: false, fail_after: nil) }
   let(:batch) { Rpush::Daemon::Batch.new([notification1, notification2]) }
   let(:store) { double.as_null_object }
   let(:time) { Time.now }
@@ -96,6 +96,22 @@ describe Rpush::Daemon::Batch do
         expect(batch.retryable).to eq(time => [notification1])
       end
     end
+
+    context 'when one of the notifications has an expired fail_after' do
+      let(:notification2) {
+        double(:notification2, id: 2, delivered: false, failed: false, fail_after: time - 1)
+      }
+
+      it 'fails that notification instead of retrying it' do
+        batch.mark_all_retryable(time, error)
+        expect(batch.failed.values.flatten).to eq [notification2]
+      end
+
+      it 'still retries the other notification' do
+        batch.mark_all_retryable(time, error)
+        expect(batch.retryable).to eq(time => [notification1])
+      end
+    end
   end
 
   describe 'mark_failed' do
@@ -132,6 +148,33 @@ describe Rpush::Daemon::Batch do
     it 'defers persisting' do
       batch.mark_retryable(notification1, time)
       expect(batch.retryable).to eq(time => [notification1])
+    end
+
+    context 'when fail_after has already passed' do
+      let(:notification1) {
+        double(:notification1, id: 1, delivered: false, failed: false, fail_after: time - 1)
+      }
+
+      it 'marks it failed instead of retryable' do
+        batch.mark_retryable(notification1, time)
+        expect(batch.failed).to eq([nil, "Notification failed to be delivered before #{(time - 1).strftime('%Y-%m-%d %H:%M:%S')}."] => [notification1])
+      end
+
+      it 'does not add it to the retryable set' do
+        batch.mark_retryable(notification1, time)
+        expect(batch.retryable).to be_empty
+      end
+    end
+
+    context 'when fail_after has not yet passed' do
+      let(:notification1) {
+        double(:notification1, id: 1, delivered: false, failed: false, fail_after: time + 60)
+      }
+
+      it 'still marks it retryable' do
+        batch.mark_retryable(notification1, time)
+        expect(batch.retryable).to eq(time => [notification1])
+      end
     end
   end
 

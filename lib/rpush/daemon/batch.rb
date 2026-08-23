@@ -39,7 +39,15 @@ module Rpush
         end
       end
 
+      # Most transports bypass Delivery#mark_retryable's own fail_after check by calling
+      # this directly, so it's enforced here too rather than assuming it's redundant.
       def mark_retryable(notification, deliver_after)
+        if notification.fail_after && notification.fail_after < Time.now
+          mark_failed(notification, nil,
+            "Notification failed to be delivered before #{notification.fail_after.strftime('%Y-%m-%d %H:%M:%S')}.")
+          return
+        end
+
         @mutex.synchronize do
           @retryable[deliver_after] ||= []
           @retryable[deliver_after] << notification
