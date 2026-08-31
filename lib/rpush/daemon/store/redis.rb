@@ -4,10 +4,11 @@ module Rpush
       class Redis
         DEFAULT_MARK_OPTIONS = { persist: true }
 
-        # Fraction of a poll's budget reserved for the retryable set, so that a large
-        # pending backlog can never starve retries. The remainder goes to pending, and
-        # retryable additionally absorbs whatever pending does not use -- so when
-        # pending is empty, retries drain at the full batch_size.
+        # Ceiling on the share of a poll the retryable set may take in its first pass, so
+        # a deep retryable set cannot consume the budget and starve pending. It is a CAP,
+        # not a reservation: pending takes everything retryable leaves, and a second
+        # retryable pass mops up anything pending did not use -- so neither side starves
+        # and no slot goes idle while either side has work.
         RETRYABLE_CLAIM_SHARE = 0.2
 
         # Claim at most ARGV[2] members scoring at or below ARGV[1] (i.e. DUE), lowest
@@ -49,13 +50,28 @@ module Rpush
         # polls until the oversized batch drained, extending the starvation well beyond
         # a single poll. Measured live: a retryable set 35x batch_size deep.
         #
-        # Pending is claimed FIRST and capped, so it is never starved; retryable takes
-        # the remainder plus anything pending left unused, so it is never starved either.
+        # Retryable is claimed first but CAPPED, so it can no longer take the poll;
+        # pending then claims the ENTIRE remainder, so an empty retryable set costs
+        # nothing. Any budget neither side used goes back to retryable, so retryable is
+        # not starved when pending is shallow either.
+        #
+        # The cap sits on retryable rather than on pending on purpose. Reserving a fixed
+        # share for RETRYABLE instead -- and giving pending only the rest -- leaves that
+        # share unused on every poll where nothing is due, which is every poll of a large
+        # campaign drain. That is a flat ~20% off the top of the throughput the feeder is
+        # capable of, and the feeder's claim rate is the binding constraint on how long a
+        # campaign takes: measured at 5 tasks, deliveries plateaued at 2,672/min/task
+        # against the 3,000/min that batch_size 100 over a 2s push_poll allows, i.e. 89%
+        # of the claim ceiling, with dispatch, the database and Redis all idle-ish behind
+        # it. Losing a fifth of that is 10 minutes on a 2M-notification campaign.
         def deliverable_notifications(limit)
           return [] unless limit > 0
 
-          pending_ids   = pending_notification_ids(pending_budget(limit))
-          retryable_ids = retryable_notification_ids(limit - pending_ids.size)
+          retryable_ids = retryable_notification_ids(retryable_budget(limit))
+          pending_ids   = pending_notification_ids(limit - retryable_ids.size)
+
+          unclaimed = limit - retryable_ids.size - pending_ids.size
+          retryable_ids += retryable_notification_ids(unclaimed) if unclaimed > 0
 
           ids = retryable_ids + pending_ids
           ids.map { |id| find_notification_by_id(id) }.compact
@@ -217,16 +233,15 @@ module Rpush
         # than its backoff intended. That is strictly less harmful than the previous
         # all-or-nothing race over the entire due set, and it cannot lose a
         # notification.
-        # Pending's share of a poll, floored at one slot.
+        # Retryable's first-pass cap. `.min` with `limit` matters at limit == 1, which the
+        # Feeder reaches whenever AppRunner still holds batch_size - 1 queued: without it
+        # the ceil would ask for more than the poll has.
         #
-        # The floor is load-bearing at limit == 1, which the Feeder reaches whenever
-        # AppRunner has batch_size - 1 notifications still queued: 1 - (1 * 0.2).ceil is
-        # 0, so without the floor pending would be skipped entirely for that poll and a
-        # poll with no due retry would return nothing at all while pending work waited.
-        # The single slot goes to pending because pending is the latency-bearing side;
-        # retryable still gets it through `limit - pending_ids.size` when pending is empty.
-        def pending_budget(limit)
-          [limit - (limit * RETRYABLE_CLAIM_SHARE).ceil, 1].max
+        # Nothing is reserved for pending here, because nothing needs to be: pending
+        # claims `limit - retryable_ids.size`, so it always receives at least
+        # limit - ceil(limit * SHARE), and the whole budget whenever nothing is due.
+        def retryable_budget(limit)
+          [(limit * RETRYABLE_CLAIM_SHARE).ceil, limit].min
         end
 
         def retryable_notification_ids(limit)
@@ -241,7 +256,14 @@ module Rpush
           end
         end
 
+        # NOTE the early return. ZRANGE bounds are INCLUSIVE, so the `limit - 1` below
+        # turns a request for 0 into `zrange 0 0`, which returns ONE id -- claiming a
+        # notification the caller had no budget for and, worse, removing it from the
+        # pending set to do so. The previous caller papered over that with its own
+        # `limit > 0 ?` ternary; guarding here fixes it for every caller instead.
         def pending_notification_ids(limit)
+          return [] unless limit > 0
+
           limit = [0, limit - 1].max # 'zrange key 0 1' will return 2 values, not 1.
           pending_ns = Rpush::Client::Redis::Notification.absolute_pending_namespace
 

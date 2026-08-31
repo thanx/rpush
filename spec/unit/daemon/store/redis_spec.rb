@@ -120,6 +120,8 @@ describe Rpush::Daemon::Store::Redis do
       expect(delivered).to include(pending)
     end
 
+    # Retryable's cap is a first-pass cap only: a second pass hands back whatever pending
+    # left, so a retry backlog still drains at the full batch_size when pending is empty.
     it 'gives retryable the whole budget when pending is empty' do
       11.times { move_to_retryable(new_notification, time - 1.hour) }
       Modis.with_connection { |redis| redis.del(pending_ns) }
@@ -144,20 +146,46 @@ describe Rpush::Daemon::Store::Redis do
       expect(remaining).to eq 1
     end
 
-    # limit == 1 is what the Feeder passes whenever AppRunner still has batch_size - 1
-    # queued. 1 - (1 * 0.2).ceil is 0, so an unfloored budget skips pending entirely and
-    # this poll delivers nothing at all while pending work waits.
-    it 'still delivers pending work when the whole budget is a single slot' do
+    # THE example for the campaign target: a drain with nothing due must get the WHOLE
+    # batch, not batch minus retryable's share. Reserving that share instead of capping it
+    # idles a fifth of the feeder's claim rate on every poll of a campaign -- and the
+    # claim rate is what sets how long the campaign takes.
+    it 'gives pending the whole budget when nothing is due to retry' do
+      10.times { new_notification }
+
+      expect(store.deliverable_notifications(10).size).to eq 10
+    end
+
+    # limit == 1 is what the Feeder passes whenever AppRunner still holds batch_size - 1
+    # queued.
+    it 'delivers pending work when the whole budget is a single slot and nothing is due' do
       pending = new_notification
 
       expect(store.deliverable_notifications(1)).to eq [pending]
     end
 
-    it 'gives the single slot to retryable when pending is empty' do
+    # ZRANGE bounds are INCLUSIVE, so a zero pending budget used to claim one id anyway
+    # (`zrange 0 0` returns one element). Both halves are asserted, because the harmful
+    # half is the second: the notification was REMOVED from the pending set to be
+    # returned over budget, so a caller that dropped the overflow would drop the
+    # notification with it.
+    it 'gives the single slot to the due retry when there is one' do
       retryable = new_notification
       move_to_retryable(retryable, time - 1.hour)
+      new_notification
 
       expect(store.deliverable_notifications(1)).to eq [retryable]
+    end
+
+    it 'leaves the pending notification in the set when its budget was zero' do
+      retryable = new_notification
+      move_to_retryable(retryable, time - 1.hour)
+      new_notification
+
+      store.deliverable_notifications(1)
+
+      remaining = Modis.with_connection { |redis| redis.zcard(pending_ns) }
+      expect(remaining).to eq 1
     end
 
     it 'delivers nothing rather than raising when the budget is zero' do
