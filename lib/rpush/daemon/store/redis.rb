@@ -10,6 +10,26 @@ module Rpush
         # pending is empty, retries drain at the full batch_size.
         RETRYABLE_CLAIM_SHARE = 0.2
 
+        # Claim at most ARGV[2] members scoring at or below ARGV[1] (i.e. DUE), lowest
+        # score first, and remove exactly those members.
+        #
+        # A read-then-remove pair cannot be made safe here even inside MULTI, because
+        # MULTI cannot branch on the result of its own ZRANGE: a rank-bounded removal
+        # races another daemon's claim and can then remove -- and deliver -- a retry whose
+        # backoff has not elapsed. ZREMRANGEBYSCORE is no escape either; it would remove
+        # every due member while returning only `limit` of them, losing the rest. EVAL is
+        # what makes selection and removal one operation over one member set.
+        #
+        # `unpack` (Lua 5.1, which is what Redis embeds) is safe against a stack blowout
+        # here because the list is bounded by Rpush.config.batch_size.
+        RETRYABLE_CLAIM_SCRIPT = <<-LUA
+          local ids = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1], 'LIMIT', 0, tonumber(ARGV[2]))
+          if #ids > 0 then
+            redis.call('ZREM', KEYS[1], unpack(ids))
+          end
+          return ids
+        LUA
+
         def app(app_id)
           Rpush::Client::ActiveRecord::App.find(app_id)
         end
@@ -32,9 +52,10 @@ module Rpush
         # Pending is claimed FIRST and capped, so it is never starved; retryable takes
         # the remainder plus anything pending left unused, so it is never starved either.
         def deliverable_notifications(limit)
-          pending_budget = limit - (limit * RETRYABLE_CLAIM_SHARE).ceil
-          pending_ids    = pending_budget > 0 ? pending_notification_ids(pending_budget) : []
-          retryable_ids  = retryable_notification_ids(limit - pending_ids.size)
+          return [] unless limit > 0
+
+          pending_ids   = pending_notification_ids(pending_budget(limit))
+          retryable_ids = retryable_notification_ids(limit - pending_ids.size)
 
           ids = retryable_ids + pending_ids
           ids.map { |id| find_notification_by_id(id) }.compact
@@ -196,25 +217,27 @@ module Rpush
         # than its backoff intended. That is strictly less harmful than the previous
         # all-or-nothing race over the entire due set, and it cannot lose a
         # notification.
+        # Pending's share of a poll, floored at one slot.
+        #
+        # The floor is load-bearing at limit == 1, which the Feeder reaches whenever
+        # AppRunner has batch_size - 1 notifications still queued: 1 - (1 * 0.2).ceil is
+        # 0, so without the floor pending would be skipped entirely for that poll and a
+        # poll with no due retry would return nothing at all while pending work waited.
+        # The single slot goes to pending because pending is the latency-bearing side;
+        # retryable still gets it through `limit - pending_ids.size` when pending is empty.
+        def pending_budget(limit)
+          [limit - (limit * RETRYABLE_CLAIM_SHARE).ceil, 1].max
+        end
+
         def retryable_notification_ids(limit)
           return [] unless limit > 0
 
-          retryable_ns = Rpush::Client::Redis::Notification.absolute_retryable_namespace
-          now = Time.now.to_i
-
           Modis.with_connection do |redis|
-            claim = [redis.zcount(retryable_ns, 0, now), limit].min
-
-            if claim.zero?
-              []
-            else
-              retryable_results = redis.multi do |transaction|
-                transaction.zrange(retryable_ns, 0, claim - 1)
-                transaction.zremrangebyrank(retryable_ns, 0, claim - 1)
-              end
-
-              retryable_results.first
-            end
+            redis.eval(
+              RETRYABLE_CLAIM_SCRIPT,
+              keys: [Rpush::Client::Redis::Notification.absolute_retryable_namespace],
+              argv: [Time.now.to_i, limit]
+            )
           end
         end
 

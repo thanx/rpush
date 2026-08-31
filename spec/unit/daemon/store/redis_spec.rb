@@ -143,5 +143,53 @@ describe Rpush::Daemon::Store::Redis do
       remaining = Modis.with_connection { |redis| redis.zcard(retryable_ns) }
       expect(remaining).to eq 1
     end
+
+    # limit == 1 is what the Feeder passes whenever AppRunner still has batch_size - 1
+    # queued. 1 - (1 * 0.2).ceil is 0, so an unfloored budget skips pending entirely and
+    # this poll delivers nothing at all while pending work waits.
+    it 'still delivers pending work when the whole budget is a single slot' do
+      pending = new_notification
+
+      expect(store.deliverable_notifications(1)).to eq [pending]
+    end
+
+    it 'gives the single slot to retryable when pending is empty' do
+      retryable = new_notification
+      move_to_retryable(retryable, time - 1.hour)
+
+      expect(store.deliverable_notifications(1)).to eq [retryable]
+    end
+
+    it 'delivers nothing rather than raising when the budget is zero' do
+      new_notification
+
+      expect(store.deliverable_notifications(0)).to be_empty
+    end
+
+    # The claim selects and removes ONE member set in a single Redis operation, so a
+    # concurrent claimer cannot make it remove a member whose backoff has not elapsed.
+    # Under a rank-bounded claim the future retry would be taken here as soon as the
+    # due count read before the removal disagreed with the set.
+    it 'leaves a future retry queued when it shares the set with a due one' do
+      due = new_notification
+      future = new_notification
+      move_to_retryable(due, time - 1.hour)
+      move_to_retryable(future, time + 1.hour)
+      Modis.with_connection { |redis| redis.del(pending_ns) }
+
+      expect(store.deliverable_notifications(10)).to eq [due]
+    end
+
+    it 'keeps the future retry in the retryable set for its own backoff' do
+      due = new_notification
+      future = new_notification
+      move_to_retryable(due, time - 1.hour)
+      move_to_retryable(future, time + 1.hour)
+
+      store.deliverable_notifications(10)
+
+      remaining = Modis.with_connection { |redis| redis.zrange(retryable_ns, 0, -1) }
+      expect(remaining).to eq [future.id.to_s]
+    end
   end
 end if redis?
