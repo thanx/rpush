@@ -4,6 +4,12 @@ module Rpush
       class Redis
         DEFAULT_MARK_OPTIONS = { persist: true }
 
+        # Fraction of a poll's budget reserved for the retryable set, so that a large
+        # pending backlog can never starve retries. The remainder goes to pending, and
+        # retryable additionally absorbs whatever pending does not use -- so when
+        # pending is empty, retries drain at the full batch_size.
+        RETRYABLE_CLAIM_SHARE = 0.2
+
         def app(app_id)
           Rpush::Client::ActiveRecord::App.find(app_id)
         end
@@ -12,10 +18,24 @@ module Rpush
           Rpush::Client::ActiveRecord::App.all
         end
 
+        # Splits a poll's budget between the two sources instead of letting retryable
+        # consume all of it.
+        #
+        # Previously `retryable_notification_ids` claimed EVERY due retry with no
+        # bound, then `limit` was decremented by that count. Whenever the due retryable
+        # set was at least `limit` deep, pending received exactly zero for the poll --
+        # and because the claimed batch also overshot `limit`, the Feeder's
+        # `batch_size - AppRunner.total_queued` short-circuit then suppressed subsequent
+        # polls until the oversized batch drained, extending the starvation well beyond
+        # a single poll. Measured live: a retryable set 35x batch_size deep.
+        #
+        # Pending is claimed FIRST and capped, so it is never starved; retryable takes
+        # the remainder plus anything pending left unused, so it is never starved either.
         def deliverable_notifications(limit)
-          retryable_ids = retryable_notification_ids
-          limit -= retryable_ids.size
-          pending_ids = limit > 0 ? pending_notification_ids(limit) : []
+          pending_budget = limit - (limit * RETRYABLE_CLAIM_SHARE).ceil
+          pending_ids    = pending_budget > 0 ? pending_notification_ids(pending_budget) : []
+          retryable_ids  = retryable_notification_ids(limit - pending_ids.size)
+
           ids = retryable_ids + pending_ids
           ids.map { |id| find_notification_by_id(id) }.compact
         end
@@ -161,17 +181,40 @@ module Rpush
           notification
         end
 
-        def retryable_notification_ids
+        # Claims at most `limit` DUE retries, oldest-due first.
+        #
+        # The retryable set is scored by `deliver_after.to_i` (see #mark_retryable), so
+        # ascending rank is ascending due-time. Because `claim` is capped at the number
+        # of members scoring <= now, the lowest `claim` members by rank are all due --
+        # which is what makes a rank-bounded claim safe here. ZRANGE and
+        # ZREMRANGEBYRANK inside the MULTI address an identical member set, so nothing
+        # is ever removed without being returned.
+        #
+        # Concurrency note: with several daemon processes, another may claim between the
+        # ZCOUNT and the MULTI. `claim` can then exceed the remaining due count and the
+        # removal may take a member that is not yet due, delivering one retry earlier
+        # than its backoff intended. That is strictly less harmful than the previous
+        # all-or-nothing race over the entire due set, and it cannot lose a
+        # notification.
+        def retryable_notification_ids(limit)
+          return [] unless limit > 0
+
           retryable_ns = Rpush::Client::Redis::Notification.absolute_retryable_namespace
+          now = Time.now.to_i
 
           Modis.with_connection do |redis|
-            retryable_results = redis.multi do |transaction|
-              now = Time.now.to_i
-              transaction.zrangebyscore(retryable_ns, 0, now)
-              transaction.zremrangebyscore(retryable_ns, 0, now)
-            end
+            claim = [redis.zcount(retryable_ns, 0, now), limit].min
 
-            retryable_results.first
+            if claim.zero?
+              []
+            else
+              retryable_results = redis.multi do |transaction|
+                transaction.zrange(retryable_ns, 0, claim - 1)
+                transaction.zremrangebyrank(retryable_ns, 0, claim - 1)
+              end
+
+              retryable_results.first
+            end
           end
         end
 
