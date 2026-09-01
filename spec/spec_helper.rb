@@ -32,7 +32,10 @@ def redis?
   client == :redis
 end
 
-require 'support/active_record_setup' if active_record?
+# The ActiveRecord schema is needed under both clients: Store::Redis#all_apps reads apps from
+# ActiveRecord (this fork's hybrid — apps in the RDBMS, notifications in the per-client store),
+# so even the redis client needs the apps table.
+require 'support/active_record_setup'
 
 RPUSH_ROOT = '/tmp/rails_root'
 
@@ -42,6 +45,10 @@ Rpush.configure do |config|
 end
 
 RPUSH_CLIENT = Rpush.config.client
+
+# Under the redis client, keep the ActiveRecord app store in sync with the redis one, so the
+# daemon (which reads apps from ActiveRecord) sees the apps the specs create in Redis.
+require 'support/redis_app_mirror' if redis?
 
 path = File.join(File.dirname(__FILE__), 'support')
 TEST_CERT = File.read(File.join(path, 'cert_without_password.pem'))
