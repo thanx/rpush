@@ -218,21 +218,6 @@ module Rpush
           notification
         end
 
-        # Claims at most `limit` DUE retries, oldest-due first.
-        #
-        # The retryable set is scored by `deliver_after.to_i` (see #mark_retryable), so
-        # ascending rank is ascending due-time. Because `claim` is capped at the number
-        # of members scoring <= now, the lowest `claim` members by rank are all due --
-        # which is what makes a rank-bounded claim safe here. ZRANGE and
-        # ZREMRANGEBYRANK inside the MULTI address an identical member set, so nothing
-        # is ever removed without being returned.
-        #
-        # Concurrency note: with several daemon processes, another may claim between the
-        # ZCOUNT and the MULTI. `claim` can then exceed the remaining due count and the
-        # removal may take a member that is not yet due, delivering one retry earlier
-        # than its backoff intended. That is strictly less harmful than the previous
-        # all-or-nothing race over the entire due set, and it cannot lose a
-        # notification.
         # Retryable's first-pass cap. `.min` with `limit` matters at limit == 1, which the
         # Feeder reaches whenever AppRunner still holds batch_size - 1 queued: without it
         # the ceil would ask for more than the poll has.
@@ -244,6 +229,9 @@ module Rpush
           [(limit * RETRYABLE_CLAIM_SHARE).ceil, limit].min
         end
 
+        # Claims at most `limit` DUE retries, oldest-due first, removing exactly the
+        # members it returns. Selection and removal are one atomic operation -- see
+        # RETRYABLE_CLAIM_SCRIPT for why that cannot be done with MULTI.
         def retryable_notification_ids(limit)
           return [] unless limit > 0
 
