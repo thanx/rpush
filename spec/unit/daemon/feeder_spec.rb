@@ -54,6 +54,19 @@ describe Rpush::Daemon::Feeder do
     start_and_stop
   end
 
+  it 'reports the requested and loaded notification counts per poll' do
+    expect(Rpush::Daemon::Feeder).to receive(:reflect).with(:feeder_poll,
+      hash_including(requested: Rpush.config.batch_size, claimed: 1, queued_before: 0))
+    start_and_stop
+  end
+
+  it 'reports when the internal queue consumes the whole claim budget' do
+    allow(Rpush::Daemon::AppRunner).to receive_messages(total_queued: Rpush.config.batch_size)
+    expect(Rpush::Daemon::Feeder).to receive(:reflect).with(:feeder_poll,
+      hash_including(requested: 0, claimed: 0, queued_before: Rpush.config.batch_size))
+    start_and_stop
+  end
+
   it "logs errors" do
     e = StandardError.new("bork")
     allow(Rpush::Daemon.store).to receive(:deliverable_notifications).and_raise(e)
