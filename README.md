@@ -10,12 +10,14 @@
 
 #### Thanx sandbox feeder probe
 
-On the Thanx fork, `RPUSH_SIMULATE_DELIVERY=true` suppresses all provider dispatch
-only when `RAILS_ENV=sandbox`. The daemon still claims, queues, and persists
-each notification in a terminal Redis state; it emits
-`notifications_simulated` rather than `notification_delivered`. This is for a
-short feeder-capacity test, not an end-to-end APNs/FCM throughput test. Keep the
-flag on until synthetic backlog is drained before restoring normal delivery.
+On the Thanx fork, a sandbox notification whose data contains `pla1859_run` and
+whose token starts with the matching `pla1859-<run>-` prefix is always simulated
+before provider dispatch. Ordinary sandbox notifications continue to send.
+`RPUSH_SIMULATE_DELIVERY=true` remains an optional sandbox-only switch that
+simulates all notifications, and must not be left on after a test. Simulated
+notifications reach a terminal Redis state and emit `notifications_simulated`,
+not `notification_delivered`. This is a feeder-capacity test, not an end-to-end
+APNs/FCM throughput test.
 
 Rpush aims to be the *de facto* gem for sending push notifications in Ruby. Its core goals are ease of use, reliability and a rich feature set. Rpush provides numerous advanced features not found in others gems, giving you greater control & insight as your project grows. These are a few of the reasons why companies worldwide rely on Rpush to deliver their notifications.
 
