@@ -15,6 +15,14 @@ describe Rpush::Daemon::Store::Redis do
   end
 
   describe 'deliverable_notifications' do
+    it 'reports the pending and retry claim counts without notification IDs' do
+      notification
+      expect(store).to receive(:reflect).with(:redis_claim,
+        hash_including(requested: Rpush.config.batch_size, pending_claimed: 1,
+          retryable_claimed: 0, missing: 0))
+      store.deliverable_notifications(Rpush.config.batch_size)
+    end
+
     it 'loads notifications in batches' do
       Rpush.config.batch_size = 100
       allow(store).to receive_messages(pending_notification_ids: [1, 2, 3, 4])

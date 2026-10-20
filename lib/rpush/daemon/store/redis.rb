@@ -2,6 +2,8 @@ module Rpush
   module Daemon
     module Store
       class Redis
+        include Reflectable
+
         DEFAULT_MARK_OPTIONS = { persist: true }
 
         # Ceiling on the share of a poll the retryable set may take in its first pass, so
@@ -67,6 +69,7 @@ module Rpush
         def deliverable_notifications(limit)
           return [] unless limit > 0
 
+          claim_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           retryable_ids = retryable_notification_ids(retryable_budget(limit))
           pending_ids   = pending_notification_ids(limit - retryable_ids.size)
 
@@ -74,7 +77,13 @@ module Rpush
           retryable_ids += retryable_notification_ids(unclaimed) if unclaimed > 0
 
           ids = retryable_ids + pending_ids
-          ids.map { |id| find_notification_by_id(id) }.compact
+          claim_ms = elapsed_ms(claim_started)
+          fetch_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          notifications = ids.map { |id| find_notification_by_id(id) }.compact
+          reflect(:redis_claim, requested: limit, pending_claimed: pending_ids.size,
+            retryable_claimed: retryable_ids.size, missing: ids.size - notifications.size,
+            claim_ms: claim_ms, fetch_ms: elapsed_ms(fetch_started))
+          notifications
         end
 
         def mark_delivered(notification, time, opts = {})
@@ -192,6 +201,10 @@ module Rpush
         end
 
         private
+
+        def elapsed_ms(started_at)
+          ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000).round(2)
+        end
 
         def find_notification_by_id(id)
           Rpush::Client::Redis::Notification.find(id)
