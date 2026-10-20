@@ -63,10 +63,27 @@ module Rpush
 
       def dispatch(payload)
         @dispatch_count += 1
-        @dispatcher.dispatch(payload)
+        if simulate_delivery?
+          # Keep the feeder, app queue, and Redis persistence in the benchmark, but
+          # never enter a provider dispatcher. A batch payload has no notification;
+          # single-delivery services share a batch across their queue payloads.
+          if payload.notification
+            payload.batch.mark_simulated(payload.notification)
+            payload.batch.notification_processed
+          else
+            payload.batch.mark_all_simulated
+            payload.batch.all_processed
+          end
+        else
+          @dispatcher.dispatch(payload)
+        end
       rescue StandardError => e
         log_error(e)
         reflect(:error, e)
+      end
+
+      def simulate_delivery?
+        ENV['RAILS_ENV'] == 'sandbox' && ENV['RPUSH_SIMULATE_DELIVERY'] == 'true'
       end
     end
   end

@@ -10,7 +10,7 @@ module Rpush
       :error, :adm_canonical_id, :adm_failed_to_recipient, :wns_invalid_channel,
       :tcp_connection_lost, :ssl_certificate_will_expire, :ssl_certificate_revoked,
       :notification_id_will_retry, :notification_id_failed,
-      :feeder_poll, :redis_claim
+      :feeder_poll, :redis_claim, :notifications_simulated
     ]
 
     DEPRECATIONS = {}

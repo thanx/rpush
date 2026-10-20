@@ -8,6 +8,15 @@
 
 ### Rpush. The push notification service for Ruby.
 
+#### Thanx sandbox feeder probe
+
+On the Thanx fork, `RPUSH_SIMULATE_DELIVERY=true` suppresses all provider dispatch
+only when `RAILS_ENV=sandbox`. The daemon still claims, queues, and persists
+each notification in a terminal Redis state; it emits
+`notifications_simulated` rather than `notification_delivered`. This is for a
+short feeder-capacity test, not an end-to-end APNs/FCM throughput test. Keep the
+flag on until synthetic backlog is drained before restoring normal delivery.
+
 Rpush aims to be the *de facto* gem for sending push notifications in Ruby. Its core goals are ease of use, reliability and a rich feature set. Rpush provides numerous advanced features not found in others gems, giving you greater control & insight as your project grows. These are a few of the reasons why companies worldwide rely on Rpush to deliver their notifications.
 
 #### Supported Services
