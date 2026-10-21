@@ -110,7 +110,7 @@ describe Rpush::Daemon::Store::Redis do
       expect(Rpush::Client::Redis::Notification).to receive(:find).with(notification.id, other.id).and_call_original
 
       store.mark_ids_retryable([notification.id, other.id], deliver_after)
-      expect([notification.reload.deliver_after, other.reload.deliver_after].map(&:to_s)).to all(eq(deliver_after.utc.to_s))
+      expect([notification.reload.deliver_after, other.reload.deliver_after].map(&:to_i)).to all(eq(deliver_after.to_i))
     end
   end
 
