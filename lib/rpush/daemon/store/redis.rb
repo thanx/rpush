@@ -2,6 +2,8 @@ module Rpush
   module Daemon
     module Store
       class Redis
+        include Reflectable
+
         DEFAULT_MARK_OPTIONS = { persist: true }
 
         # Ceiling on the share of a poll the retryable set may take in its first pass, so
@@ -67,6 +69,7 @@ module Rpush
         def deliverable_notifications(limit)
           return [] unless limit > 0
 
+          claim_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           retryable_ids = retryable_notification_ids(retryable_budget(limit))
           pending_ids   = pending_notification_ids(limit - retryable_ids.size)
 
@@ -74,7 +77,14 @@ module Rpush
           retryable_ids += retryable_notification_ids(unclaimed) if unclaimed > 0
 
           ids = retryable_ids + pending_ids
-          ids.map { |id| find_notification_by_id(id) }.compact
+          claim_ms = elapsed_ms(claim_started)
+          fetch_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          notifications = find_notifications_by_ids(ids)
+          reflect(:redis_claim, requested: limit, pending_claimed: pending_ids.size,
+            retryable_claimed: retryable_ids.size, missing: ids.size - notifications.size,
+            claim_ms: claim_ms, fetch_ms: elapsed_ms(fetch_started),
+            fetch_batch_size: Rpush.config.redis_fetch_batch_size)
+          notifications
         end
 
         def mark_delivered(notification, time, opts = {})
@@ -106,10 +116,7 @@ module Rpush
         end
 
         def mark_ids_failed(ids, code, description, time)
-          ids.each do |id|
-            notification = find_notification_by_id(id)
-            next unless notification
-
+          find_notifications_by_ids(ids).each do |notification|
             mark_failed(notification, code, description, time)
           end
         end
@@ -137,10 +144,7 @@ module Rpush
         end
 
         def mark_ids_retryable(ids, deliver_after)
-          ids.each do |id|
-            notification = find_notification_by_id(id)
-            next unless notification
-
+          find_notifications_by_ids(ids).each do |notification|
             mark_retryable(notification, deliver_after)
           end
         end
@@ -193,11 +197,33 @@ module Rpush
 
         private
 
+        def elapsed_ms(started_at)
+          ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000).round(2)
+        end
+
         def find_notification_by_id(id)
           Rpush::Client::Redis::Notification.find(id)
         rescue Modis::RecordNotFound
           Rpush.logger.warn("Couldn't find Rpush::Client::Redis::Notification with id=#{id}")
           nil
+        end
+
+        # Modis#find pipelines a multi-ID lookup, preserving the caller's order and
+        # STI model types. Keep the default single-record path until a deployment
+        # explicitly opts in. A missing hash makes Modis raise for the whole slice;
+        # retry that small slice individually to retain the old skip-and-warn behavior.
+        def find_notifications_by_ids(ids)
+          ids.each_slice(Rpush.config.redis_fetch_batch_size).flat_map do |slice|
+            if slice.size == 1
+              [find_notification_by_id(slice.first)].compact
+            else
+              begin
+                Rpush::Client::Redis::Notification.find(*slice)
+              rescue Modis::RecordNotFound
+                slice.map { |id| find_notification_by_id(id) }.compact
+              end
+            end
+          end
         end
 
         def create_fcm_like_notification(notification, attrs, data, app) # rubocop:disable Metrics/ParameterLists

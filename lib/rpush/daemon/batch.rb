@@ -4,12 +4,13 @@ module Rpush
       include Reflectable
       include Loggable
 
-      attr_reader :num_processed, :notifications, :delivered, :failed, :retryable
+      attr_reader :num_processed, :notifications, :delivered, :failed, :retryable, :simulated
 
       def initialize(notifications)
         @notifications = notifications
         @num_processed = 0
         @delivered = []
+        @simulated = []
         @failed = {}
         @retryable = {}
         @mutex = Mutex.new
@@ -34,7 +35,7 @@ module Rpush
       # re-queue such notifications rather than lose them. Read-only; safe on any transport.
       def unresolved
         @mutex.synchronize do
-          resolved = @delivered + @failed.values.flatten(1) + @retryable.values.flatten(1)
+          resolved = @delivered + @simulated + @failed.values.flatten(1) + @retryable.values.flatten(1)
           @notifications - resolved
         end
       end
@@ -86,6 +87,21 @@ module Rpush
         end
       end
 
+      # A sandbox load-test outcome, not provider acceptance. Persist using the
+      # existing terminal Redis state so the feeder does not reclaim these rows,
+      # but never emit notification_delivered or its Nexus-side side effects.
+      def mark_simulated(notification)
+        @mutex.synchronize { @simulated << notification }
+        Rpush::Daemon.store.mark_delivered(notification, Time.now, persist: false)
+      end
+
+      def mark_all_simulated
+        @mutex.synchronize { @simulated = @notifications }
+        each_notification do |notification|
+          Rpush::Daemon.store.mark_delivered(notification, Time.now, persist: false)
+        end
+      end
+
       def mark_failed(notification, code, description)
         key = [code, description]
         @mutex.synchronize do
@@ -124,7 +140,7 @@ module Rpush
       def complete
         return if complete?
 
-        [:complete_delivered, :complete_failed, :complete_retried].each do |method|
+        [:complete_delivered, :complete_simulated, :complete_failed, :complete_retried].each do |method|
           begin
             send(method)
           rescue StandardError => e
@@ -141,6 +157,13 @@ module Rpush
         @delivered.each do |notification|
           reflect(:notification_delivered, notification)
         end
+      end
+
+      def complete_simulated
+        return if @simulated.empty?
+
+        Rpush::Daemon.store.mark_batch_delivered(@simulated)
+        reflect(:notifications_simulated, @simulated.size)
       end
 
       def complete_failed

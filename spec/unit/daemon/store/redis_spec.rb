@@ -15,11 +15,43 @@ describe Rpush::Daemon::Store::Redis do
   end
 
   describe 'deliverable_notifications' do
+    it 'reports the pending and retry claim counts without notification IDs' do
+      notification
+      expect(store).to receive(:reflect).with(:redis_claim,
+        hash_including(requested: Rpush.config.batch_size, pending_claimed: 1,
+          retryable_claimed: 0, missing: 0))
+      store.deliverable_notifications(Rpush.config.batch_size)
+    end
+
     it 'loads notifications in batches' do
       Rpush.config.batch_size = 100
       allow(store).to receive_messages(pending_notification_ids: [1, 2, 3, 4])
       expect(Rpush::Client::Redis::Notification).to receive(:find).exactly(4).times
       store.deliverable_notifications(Rpush.config.batch_size)
+    end
+
+    it 'pipelines bounded groups while preserving notification order and STI types' do
+      notifications = 5.times.map { |i| Rpush::Client::Redis::Apns::Notification.create!(device_token: "#{i}" * 64, app: app) }
+      Rpush.config.redis_fetch_batch_size = 2
+
+      expect(Rpush::Client::Redis::Notification).to receive(:find).with(notifications[0].id.to_s, notifications[1].id.to_s).ordered.and_call_original
+      expect(Rpush::Client::Redis::Notification).to receive(:find).with(notifications[2].id.to_s, notifications[3].id.to_s).ordered.and_call_original
+      expect(Rpush::Client::Redis::Notification).to receive(:find).with(notifications[4].id.to_s).ordered.and_call_original
+
+      loaded = store.deliverable_notifications(5)
+      expect(loaded.map(&:id)).to eq(notifications.map(&:id))
+      expect(loaded).to all(be_a(Rpush::Client::Redis::Apns::Notification))
+    end
+
+    it 'falls back to individual reads only for a group containing a missing hash' do
+      notifications = 3.times.map { Rpush::Client::Redis::Apns::Notification.create!(device_token: 'a' * 64, app: app) }
+      Rpush.config.redis_fetch_batch_size = 3
+      Modis.with_connection { |redis| redis.del(Rpush::Client::Redis::Notification.key_for(notifications[1].id)) }
+
+      expect(logger).to receive(:warn).with("Couldn't find Rpush::Client::Redis::Notification with id=#{notifications[1].id}")
+      expect(store).to receive(:reflect).with(:redis_claim, hash_including(missing: 1, fetch_batch_size: 3))
+
+      expect(store.deliverable_notifications(3).map(&:id)).to eq([notifications[0].id, notifications[2].id])
     end
 
     it 'loads an undelivered notification without deliver_after set' do
@@ -70,6 +102,15 @@ describe Rpush::Daemon::Store::Redis do
       expect do
         store.mark_ids_retryable([notification.id], deliver_after)
       end.not_to raise_exception
+    end
+
+    it 'bulk-fetches several notifications before marking them retryable' do
+      other = Rpush::Client::Redis::Apns::Notification.create!(device_token: 'b' * 64, app: app)
+      Rpush.config.redis_fetch_batch_size = 2
+      expect(Rpush::Client::Redis::Notification).to receive(:find).with(notification.id, other.id).and_call_original
+
+      store.mark_ids_retryable([notification.id, other.id], deliver_after)
+      expect([notification.reload.deliver_after, other.reload.deliver_after].map(&:to_i)).to all(eq(deliver_after.to_i))
     end
   end
 

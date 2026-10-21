@@ -50,6 +50,29 @@ describe Rpush::Daemon::Batch do
     end
   end
 
+  describe 'simulated delivery' do
+    it 'persists a terminal state without classifying it as provider delivery' do
+      expect(store).to receive(:mark_delivered).with(notification1, time, persist: false)
+      batch.mark_simulated(notification1)
+      expect(batch.simulated).to eq [notification1]
+      expect(batch.delivered).to be_empty
+    end
+
+    it 'resolves every notification in a batch' do
+      batch.mark_all_simulated
+      expect(batch.unresolved).to be_empty
+    end
+
+    it 'emits only the simulated reflection on completion' do
+      allow(batch).to receive(:reflect)
+      expect(store).to receive(:mark_batch_delivered).with([notification1, notification2])
+      expect(batch).to receive(:reflect).with(:notifications_simulated, 2)
+      expect(batch).not_to receive(:reflect).with(:notification_delivered, anything)
+      batch.mark_all_simulated
+      batch.all_processed
+    end
+  end
+
   describe 'mark_all_retryable' do
     let(:error) { StandardError.new('Exception') }
 

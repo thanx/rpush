@@ -55,6 +55,8 @@ Gem::Specification.new do |s|
   s.add_development_dependency 'appraisal'
   s.add_development_dependency 'codeclimate-test-reporter', '1.0.7'
   s.add_development_dependency 'simplecov'
+  # Rails 6/7.0 JSON encoding passes quirks_mode, which json 3 no longer accepts.
+  s.add_development_dependency 'json', '< 3'
   s.add_development_dependency 'rubocop', '~> 1.12.0'
   s.add_development_dependency 'rubocop-performance'
   s.add_development_dependency 'byebug'

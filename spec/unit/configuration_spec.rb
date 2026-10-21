@@ -28,6 +28,17 @@ describe Rpush::Configuration do
     end
   end
 
+  it 'keeps Redis notification reads serial by default' do
+    expect(config.redis_fetch_batch_size).to eq(1)
+  end
+
+  it 'copies the Redis fetch batch size on update' do
+    new_config = Rpush::Configuration.new
+    new_config.redis_fetch_batch_size = 25
+    config.update(new_config)
+    expect(config.redis_fetch_batch_size).to eq(25)
+  end
+
   it 'sets the pid_file relative if not absolute' do
     config.pid_file = 'tmp/rpush.pid'
     expect(config.pid_file).to eq '/tmp/rails_root/tmp/rpush.pid'

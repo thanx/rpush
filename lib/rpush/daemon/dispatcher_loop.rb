@@ -63,10 +63,42 @@ module Rpush
 
       def dispatch(payload)
         @dispatch_count += 1
-        @dispatcher.dispatch(payload)
+        if simulate_delivery?(payload)
+          # Keep the feeder, app queue, and Redis persistence in the benchmark, but
+          # never enter a provider dispatcher. A batch payload has no notification;
+          # single-delivery services share a batch across their queue payloads.
+          if payload.notification
+            payload.batch.mark_simulated(payload.notification)
+            payload.batch.notification_processed
+          else
+            payload.batch.mark_all_simulated
+            payload.batch.all_processed
+          end
+        else
+          @dispatcher.dispatch(payload)
+        end
       rescue StandardError => e
         log_error(e)
         reflect(:error, e)
+      end
+
+      def simulate_delivery?(payload)
+        return false unless ENV['RAILS_ENV'] == 'sandbox'
+        return true if ENV['RPUSH_SIMULATE_DELIVERY'] == 'true'
+
+        # Probe records must never reach a provider even when the global test
+        # flag is off or a normal sandbox daemon claims one. Ordinary sandbox
+        # notifications keep their normal delivery path.
+        notifications = payload.notification ? [payload.notification] : payload.batch.notifications
+        marked = notifications.map { |notification| synthetic_probe_notification?(notification) }
+        raise 'mixed synthetic and real notifications in one provider batch' if marked.any? && !marked.all?
+
+        marked.any? && marked.all?
+      end
+
+      def synthetic_probe_notification?(notification)
+        marker = notification.data.is_a?(Hash) && notification.data['pla1859_run']
+        marker && notification.device_token.to_s.start_with?("pla1859-#{marker}-")
       end
     end
   end

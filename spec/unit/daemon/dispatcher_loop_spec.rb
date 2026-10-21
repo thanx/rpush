@@ -35,6 +35,75 @@ describe Rpush::Daemon::DispatcherLoop do
     run_dispatcher_loop
   end
 
+  describe 'sandbox simulated delivery' do
+    before do
+      queue.clear
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with('RAILS_ENV').and_return('sandbox')
+      allow(ENV).to receive(:[]).with('RPUSH_SIMULATE_DELIVERY').and_return('true')
+    end
+
+    it 'resolves a single notification without calling the provider dispatcher' do
+      queue.push(Rpush::Daemon::QueuePayload.new(batch, notification))
+      expect(batch).to receive(:mark_simulated).with(notification)
+      expect(batch).to receive(:notification_processed)
+      expect(dispatcher).not_to receive(:dispatch)
+      run_dispatcher_loop
+    end
+
+    it 'resolves an APNs batch without calling the provider dispatcher' do
+      queue.push(Rpush::Daemon::QueuePayload.new(batch))
+      expect(batch).to receive(:mark_all_simulated)
+      expect(batch).to receive(:all_processed)
+      expect(dispatcher).not_to receive(:dispatch)
+      run_dispatcher_loop
+    end
+
+    it 'does not simulate outside sandbox' do
+      allow(ENV).to receive(:[]).with('RAILS_ENV').and_return('production')
+      queue.push(Rpush::Daemon::QueuePayload.new(batch, notification))
+      expect(dispatcher).to receive(:dispatch)
+      run_dispatcher_loop
+    end
+  end
+
+  describe 'sandbox synthetic probe records' do
+    before do
+      queue.clear
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with('RAILS_ENV').and_return('sandbox')
+      allow(ENV).to receive(:[]).with('RPUSH_SIMULATE_DELIVERY').and_return(nil)
+      allow(notification).to receive_messages(data: {}, device_token: 'real-device-token')
+    end
+
+    it 'never dispatches a marked synthetic notification to FCM' do
+      allow(notification).to receive_messages(
+        data: { 'pla1859_run' => 'probe1' }, device_token: 'pla1859-probe1-0'
+      )
+      queue.push(Rpush::Daemon::QueuePayload.new(batch, notification))
+      expect(batch).to receive(:mark_simulated).with(notification)
+      expect(batch).to receive(:notification_processed)
+      expect(dispatcher).not_to receive(:dispatch)
+      run_dispatcher_loop
+    end
+
+    it 'continues to dispatch ordinary sandbox notifications' do
+      queue.push(Rpush::Daemon::QueuePayload.new(batch, notification))
+      expect(dispatcher).to receive(:dispatch)
+      run_dispatcher_loop
+    end
+
+    it 'does not simulate marked notifications outside sandbox' do
+      allow(ENV).to receive(:[]).with('RAILS_ENV').and_return('production')
+      allow(notification).to receive_messages(
+        data: { 'pla1859_run' => 'probe1' }, device_token: 'pla1859-probe1-0'
+      )
+      queue.push(Rpush::Daemon::QueuePayload.new(batch, notification))
+      expect(dispatcher).to receive(:dispatch)
+      run_dispatcher_loop
+    end
+  end
+
   describe 'stop' do
     before do
       queue.clear
