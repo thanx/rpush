@@ -63,7 +63,7 @@ module Rpush
 
       def dispatch(payload)
         @dispatch_count += 1
-        if simulate_delivery?(payload)
+        if simulate_delivery?
           # Keep the feeder, app queue, and Redis persistence in the benchmark, but
           # never enter a provider dispatcher. A batch payload has no notification;
           # single-delivery services share a batch across their queue payloads.
@@ -82,23 +82,12 @@ module Rpush
         reflect(:error, e)
       end
 
-      def simulate_delivery?(payload)
-        return false unless ENV['RAILS_ENV'] == 'sandbox'
-        return true if ENV['RPUSH_SIMULATE_DELIVERY'] == 'true'
-
-        # Probe records must never reach a provider even when the global test
-        # flag is off or a normal sandbox daemon claims one. Ordinary sandbox
-        # notifications keep their normal delivery path.
-        notifications = payload.notification ? [payload.notification] : payload.batch.notifications
-        marked = notifications.map { |notification| synthetic_probe_notification?(notification) }
-        raise 'mixed synthetic and real notifications in one provider batch' if marked.any? && !marked.all?
-
-        marked.any? && marked.all?
-      end
-
-      def synthetic_probe_notification?(notification)
-        marker = notification.data.is_a?(Hash) && notification.data['pla1859_run']
-        marker && notification.device_token.to_s.start_with?("pla1859-#{marker}-")
+      # This disposable POC branch deliberately blocks *all* provider sends in
+      # sandbox, including notifications from other sandbox users. Production and
+      # every other environment keep the normal dispatcher path. Do not merge
+      # this branch as the long-lived Rpush default.
+      def simulate_delivery?
+        ENV['RAILS_ENV'] == 'sandbox'
       end
     end
   end

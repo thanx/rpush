@@ -40,7 +40,6 @@ describe Rpush::Daemon::DispatcherLoop do
       queue.clear
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:[]).with('RAILS_ENV').and_return('sandbox')
-      allow(ENV).to receive(:[]).with('RPUSH_SIMULATE_DELIVERY').and_return('true')
     end
 
     it 'resolves a single notification without calling the provider dispatcher' do
@@ -67,12 +66,11 @@ describe Rpush::Daemon::DispatcherLoop do
     end
   end
 
-  describe 'sandbox synthetic probe records' do
+  describe 'sandbox-only provider suppression' do
     before do
       queue.clear
       allow(ENV).to receive(:[]).and_call_original
       allow(ENV).to receive(:[]).with('RAILS_ENV').and_return('sandbox')
-      allow(ENV).to receive(:[]).with('RPUSH_SIMULATE_DELIVERY').and_return(nil)
       allow(notification).to receive_messages(data: {}, device_token: 'real-device-token')
     end
 
@@ -87,9 +85,11 @@ describe Rpush::Daemon::DispatcherLoop do
       run_dispatcher_loop
     end
 
-    it 'continues to dispatch ordinary sandbox notifications' do
+    it 'does not dispatch ordinary sandbox notifications either' do
       queue.push(Rpush::Daemon::QueuePayload.new(batch, notification))
-      expect(dispatcher).to receive(:dispatch)
+      expect(batch).to receive(:mark_simulated).with(notification)
+      expect(batch).to receive(:notification_processed)
+      expect(dispatcher).not_to receive(:dispatch)
       run_dispatcher_loop
     end
 
