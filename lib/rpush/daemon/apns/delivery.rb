@@ -9,7 +9,8 @@ module Rpush
         end
 
         def perform
-          @connection.write(batch_to_binary)
+          binary = batch_to_binary
+          @connection.write(binary) unless binary.empty?
           mark_batch_delivered
           describe_deliveries
         rescue Rpush::Daemon::TcpConnectionError => error
@@ -27,13 +28,15 @@ module Rpush
         def batch_to_binary
           payload = ""
           @batch.each_notification do |notification|
-            payload << notification.to_binary
+            payload << notification.to_binary if admitted?(notification)
           end
           payload
         end
 
         def describe_deliveries
           @batch.each_notification do |notification|
+            next if @batch.refused?(notification)
+
             log_info("#{notification.id} sent to #{notification.device_token}")
           end
         end
