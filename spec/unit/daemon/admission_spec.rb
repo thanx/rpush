@@ -125,4 +125,27 @@ describe Rpush::Daemon::Admission do
       expect(apns_batch.refused).to eq([apns_one])
     end
   end
+
+  describe Rpush::Daemon::Apns::Delivery do
+    let(:app) { double(name: 'legacy_app') }
+    let(:connection) { double('connection', write: nil) }
+    let(:refused_one) { double('refused', id: 1, to_binary: 'REFUSED', fail_after: nil, device_token: 'x') }
+    let(:sent_one) { double('sent', id: 2, to_binary: 'SENT', fail_after: nil, device_token: 'y') }
+    let(:legacy_batch) { Rpush::Daemon::Batch.new([refused_one, sent_one]) }
+
+    it 'writes only admitted frames and marks only them delivered' do
+      Rpush.config.admission = ->(n) { n.equal?(sent_one) || :contact_blocked }
+      described_class.new(app, connection, legacy_batch).perform
+      expect(connection).to have_received(:write).once.with('SENT')
+      expect(legacy_batch.delivered).to eq([sent_one])
+      expect(legacy_batch.refused).to eq([refused_one])
+    end
+
+    it 'writes nothing when every notification is refused' do
+      Rpush.config.admission = ->(_) { :contact_blocked }
+      described_class.new(app, connection, legacy_batch).perform
+      expect(connection).not_to have_received(:write)
+      expect(legacy_batch.delivered).to be_empty
+    end
+  end
 end

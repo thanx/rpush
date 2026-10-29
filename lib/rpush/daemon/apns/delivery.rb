@@ -27,16 +27,18 @@ module Rpush
 
         def batch_to_binary
           payload = ""
+          @admitted = []
           @batch.each_notification do |notification|
-            payload << notification.to_binary if admitted?(notification)
+            next unless admitted?(notification)
+
+            @admitted << notification
+            payload << notification.to_binary
           end
           payload
         end
 
         def describe_deliveries
-          @batch.each_notification do |notification|
-            next if @batch.refused?(notification)
-
+          @admitted.each do |notification|
             log_info("#{notification.id} sent to #{notification.device_token}")
           end
         end
