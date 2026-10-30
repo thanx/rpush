@@ -20,7 +20,7 @@ mysql2:
   host: <%= ENV.fetch('MYSQL_HOST', 'localhost') %>
   port: <%= ENV.fetch('MYSQL_PORT', '3306') %>
   username: rpush_test
-  password: <%= ENV.fetch('MYSQL_PASSWORD', '').to_json %>
+  password: <%= ENV.fetch('MYSQL_PASSWORD', '').dump %>
   encoding: utf8
 
 jdbcmysql:
