@@ -439,12 +439,6 @@ Rpush leaves delivered notifications in the database. If you do not clear them o
 
 See [Configuration](https://github.com/rpush/rpush/wiki/Configuration) for a list of options.
 
-#### Pre-send admission (Thanx fork)
-
-`config.admission` takes an object responding to `call(notification)`. The daemon calls it on the dispatcher thread, per notification, immediately before that notification's request is built. Only a return value of exactly `true` sends it. Any other value refuses it, and a Symbol or String names the reason. A raised error also refuses it, with reason `admission_error`. A refused notification makes no network call. It is marked failed with `error_description` `"Refused before send: <reason>"`, is never retried, and fires the `notification_refused(notification, reason)` reflection. Without a hook, delivery is unchanged.
-
-The Redis client stores an opaque `admission_ref` string with each notification for the hook to resolve. It is never part of a provider payload. `notification.admission_context` is an in-memory slot the hook can fill. The `notification_delivered`, `notification_failed` and `notification_will_retry` reflections later receive the same object, so they can settle the attempt.
-
 ### Updating Rpush
 
 You should run `rpush init` after upgrading Rpush to check for configuration and migration changes.
