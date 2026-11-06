@@ -9,6 +9,11 @@ module Rpush
           end
         end
 
+        # In memory only, never persisted or sent: whatever the pre-send admission hook
+        # attached for this dispatch (e.g. an attempt token), so the outcome reflections
+        # for the same notification object can settle it.
+        attr_accessor :admission_context
+
         def payload
           multi_json_dump(as_json)
         end

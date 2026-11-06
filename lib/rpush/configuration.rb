@@ -16,7 +16,8 @@ module Rpush
     end
   end
 
-  CURRENT_ATTRS = [:push_poll, :embedded, :pid_file, :batch_size, :push, :client, :logger, :log_file, :foreground, :foreground_logging, :log_level, :plugin, :apns]
+  # admission: optional pre-send hook, see Rpush::Daemon::Admission. nil admits everything.
+  CURRENT_ATTRS = [:push_poll, :embedded, :pid_file, :batch_size, :push, :client, :logger, :log_file, :foreground, :foreground_logging, :log_level, :plugin, :apns, :admission]
   DEPRECATED_ATTRS = []
   CONFIG_ATTRS = CURRENT_ATTRS + DEPRECATED_ATTRS
 
