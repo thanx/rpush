@@ -76,6 +76,15 @@ module Rpush
       super
     end
 
+    def []=(index, value)
+      if index == :redis_fetch_batch_size || index == 'redis_fetch_batch_size' ||
+          (index.is_a?(Integer) && self.class.members[index] == :redis_fetch_batch_size)
+        self.redis_fetch_batch_size = value
+      else
+        super
+      end
+    end
+
     def pid_file=(path)
       if path && !Pathname.new(path).absolute?
         super(File.join(Rpush.root, path))

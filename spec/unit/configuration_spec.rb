@@ -44,6 +44,19 @@ describe Rpush::Configuration do
     expect { config.redis_fetch_batch_size = 1.5 }.to raise_error(Rpush::ConfigurationError)
   end
 
+  it 'validates indexed Redis fetch batch size assignments' do
+    [:redis_fetch_batch_size, 'redis_fetch_batch_size', config.members.index(:redis_fetch_batch_size)].each do |index|
+      expect { config[index] = 0 }.to raise_error(Rpush::ConfigurationError)
+    end
+    config[:redis_fetch_batch_size] = 25
+    expect(config.redis_fetch_batch_size).to eq(25)
+  end
+
+  it 'keeps normal indexed assignments for other settings' do
+    config[:batch_size] = 50
+    expect(config.batch_size).to eq(50)
+  end
+
   it 'sets the pid_file relative if not absolute' do
     config.pid_file = 'tmp/rpush.pid'
     expect(config.pid_file).to eq '/tmp/rails_root/tmp/rpush.pid'
