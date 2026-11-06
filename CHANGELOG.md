@@ -4,7 +4,7 @@
 
 **Thanx fork:**
 
-* Optional pre-send admission hook (`config.admission`): admits only the literal `true` value (not objects comparing equal to it), refuses a notification before any provider IO, fails closed on hook errors, records the refusal as a terminal failure and fires `notification_refused`. Adds the Redis `admission_ref` attribute and the in-memory `admission_context`.
+* Optional pre-send admission hook (`config.admission`): refuses a notification before any provider IO, fails closed on hook errors, records the refusal as a terminal failure and fires `notification_refused`. Adds the Redis `admission_ref` attribute and the in-memory `admission_context`.
 
 **Merged pull requests:**
 
