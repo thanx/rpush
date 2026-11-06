@@ -16,11 +16,10 @@ jdbcpostgresql:
 
 mysql2:
   adapter: mysql2
-  database: <%= ENV.fetch('MYSQL_DB', 'rpush_test') %>
-  host: <%= ENV.fetch('MYSQL_HOST', 'localhost') %>
-  port: <%= ENV.fetch('MYSQL_PORT', '3306') %>
+  database: rpush_test
+  host: localhost
   username: rpush_test
-  password: <%= ENV.fetch('MYSQL_PASSWORD', '').dump %>
+  password: ""
   encoding: utf8
 
 jdbcmysql:
