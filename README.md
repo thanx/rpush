@@ -32,6 +32,12 @@ Rpush aims to be the *de facto* gem for sending push notifications in Ruby. Its 
 * Hooks for fine-grained instrumentation and error handling ([Reflection API](https://github.com/rpush/rpush/wiki/Reflection-API)).
 * Tested with **MRI**
 
+For the Redis client, `Rpush.config.redis_fetch_batch_size` controls how many
+notification records the feeder loads in one pipelined lookup. It defaults to
+`1` for the existing behavior. Set it to a bounded value such as `100` only
+after measuring Redis latency and missing-record fallback in your deployment;
+this option does not change the number of APNs or FCM requests.
+
 
 ### Getting Started
 
