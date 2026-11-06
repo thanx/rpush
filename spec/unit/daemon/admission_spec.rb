@@ -1,4 +1,5 @@
 require 'unit_spec_helper'
+require 'delegate'
 
 describe Rpush::Daemon::Admission do
   let(:store) do
@@ -51,6 +52,12 @@ describe Rpush::Daemon::Admission do
       expected = value.is_a?(String) ? value : 'refused'
       expect(batch.failed.keys).to eq([[nil, "Refused before send: #{expected}"]])
     end
+  end
+
+  it 'fails closed on an object delegating equality to true' do
+    expect(admit(->(_) { SimpleDelegator.new(true) })).to be(false)
+    expect(batch.refused?(notification)).to be(true)
+    expect(batch.failed.keys).to eq([[nil, 'Refused before send: refused']])
   end
 
   it 'fails closed when the hook raises, without propagating the error' do

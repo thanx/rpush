@@ -26,7 +26,7 @@ module Rpush
         return true if hook.nil?
 
         decision = decide(hook, notification)
-        return true if decision == true
+        return true if true.equal?(decision)
 
         reason = decision.is_a?(Symbol) || decision.is_a?(String) ? decision.to_s : DEFAULT_REASON
         batch.mark_refused(notification, "#{REFUSED_DESCRIPTION}: #{reason}")
