@@ -39,6 +39,11 @@ describe Rpush::Configuration do
     expect(config.redis_fetch_batch_size).to eq(25)
   end
 
+  it 'rejects an invalid Redis fetch batch size' do
+    expect { config.redis_fetch_batch_size = 0 }.to raise_error(Rpush::ConfigurationError)
+    expect { config.redis_fetch_batch_size = 1.5 }.to raise_error(Rpush::ConfigurationError)
+  end
+
   it 'sets the pid_file relative if not absolute' do
     config.pid_file = 'tmp/rpush.pid'
     expect(config.pid_file).to eq '/tmp/rails_root/tmp/rpush.pid'

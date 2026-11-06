@@ -70,6 +70,12 @@ module Rpush
       end
     end
 
+    def redis_fetch_batch_size=(size)
+      raise ConfigurationError, 'redis_fetch_batch_size must be a positive integer' unless size.is_a?(Integer) && size.positive?
+
+      super
+    end
+
     def pid_file=(path)
       if path && !Pathname.new(path).absolute?
         super(File.join(Rpush.root, path))
