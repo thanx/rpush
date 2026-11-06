@@ -43,6 +43,18 @@ describe Rpush::Daemon::Store::Redis do
       expect(loaded).to all(be_a(Rpush::Client::Redis::Apns::Notification))
     end
 
+    it 'loads a full 100-notification claim in one Redis lookup' do
+      notifications = 100.times.map do |index|
+        Rpush::Client::Redis::Apns::Notification.create!(device_token: format('%064x', index), app: app)
+      end
+      Rpush.config.redis_fetch_batch_size = 100
+
+      expect(Rpush::Client::Redis::Notification).to receive(:find)
+        .with(*notifications.map { |record| record.id.to_s }).once.and_call_original
+
+      expect(store.deliverable_notifications(100).map(&:id)).to eq(notifications.map(&:id))
+    end
+
     it 'falls back to individual reads only for a group containing a missing hash' do
       notifications = 3.times.map { Rpush::Client::Redis::Apns::Notification.create!(device_token: 'a' * 64, app: app) }
       Rpush.config.redis_fetch_batch_size = 3
