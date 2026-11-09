@@ -9,6 +9,8 @@ module Rpush
         end
 
         def dispatch(payload)
+          return payload.batch.notification_processed unless Admission.admit(payload.notification, payload.batch)
+
           @delivery_class.new(@app, @http, payload.notification, payload.batch).perform
         end
 

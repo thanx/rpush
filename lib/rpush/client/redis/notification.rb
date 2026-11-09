@@ -78,6 +78,10 @@ module Rpush
         # that callers which never set it are indistinguishable from today.
         attribute :priority_class, :integer, default: PRIORITY_CLASS_DEFAULT
 
+        # The host hook resolves this stored reference before provider IO.
+        # Provider payloads do not include it.
+        attribute :admission_ref, :string
+
         # When the notification entered the pending set. Stamped by a before_create
         # callback rather than an attribute default, because Modis evaluates `default:`
         # once at class-definition time -- a `default: Time.now` would brand every

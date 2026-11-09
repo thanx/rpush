@@ -2,6 +2,11 @@
 
 ## [Unreleased](https://github.com/rpush/rpush/tree/HEAD)
 
+**Thanx fork:**
+
+* Add the optional `config.admission` pre-send hook. A refusal prevents provider IO and records a terminal failure. Redis stores `admission_ref`. Only the dispatch object holds `admission_context`.
+* Constrain the development test bundle to `json < 3` for ActiveSupport 6.x and 7.0 serialization.
+
 **Merged pull requests:**
 
 * Support for FCMv1 [\#620](https://github.com/rpush/rpush/pull/620) ([mirkode](https://github.com/mirkode)), [\#660](https://github.com/rpush/rpush/pull/660) ([AnilRh](https://github.com/AnilRh)) and [\#673](https://github.com/rpush/rpush/pull/673) ([SixiS](https://github.com/SixiS), [Henridv](https://github.com/Henridv) & [benlangfeld](https://github.com/benlangfeld))
