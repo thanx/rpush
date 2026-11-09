@@ -9,6 +9,10 @@ module Rpush
           end
         end
 
+        # This dispatch context stays in memory for the outcome reflections.
+        # It is not stored and is not sent to a provider.
+        attr_accessor :admission_context
+
         def payload
           multi_json_dump(as_json)
         end

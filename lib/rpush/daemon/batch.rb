@@ -4,7 +4,7 @@ module Rpush
       include Reflectable
       include Loggable
 
-      attr_reader :num_processed, :notifications, :delivered, :failed, :retryable
+      attr_reader :num_processed, :notifications, :delivered, :failed, :retryable, :refused
 
       def initialize(notifications)
         @notifications = notifications
@@ -12,6 +12,7 @@ module Rpush
         @delivered = []
         @failed = {}
         @retryable = {}
+        @refused = []
         @mutex = Mutex.new
       end
 
@@ -76,12 +77,11 @@ module Rpush
         Rpush::Daemon.store.mark_delivered(notification, Time.now, persist: false)
       end
 
+      # A transport outcome cannot replace a pre-send refusal.
       def mark_all_delivered
-        @mutex.synchronize do
-          @delivered = @notifications
-        end
+        sendable = @mutex.synchronize { @delivered = @notifications - @refused }
 
-        each_notification do |notification|
+        sendable.each do |notification|
           Rpush::Daemon.store.mark_delivered(notification, Time.now, persist: false)
         end
       end
@@ -95,12 +95,19 @@ module Rpush
         Rpush::Daemon.store.mark_failed(notification, code, description, Time.now, persist: false)
       end
 
+      def mark_refused(notification, description)
+        @mutex.synchronize { @refused << notification }
+        mark_failed(notification, nil, description)
+      end
+
+      def refused?(notification)
+        @mutex.synchronize { @refused.include?(notification) }
+      end
+
       def mark_all_failed(code, message)
         key = [code, message]
-        @mutex.synchronize do
-          @failed[key] = @notifications
-        end
-        each_notification do |notification|
+        sendable = @mutex.synchronize { @failed[key] = @notifications - @refused }
+        sendable.each do |notification|
           Rpush::Daemon.store.mark_failed(notification, code, message, Time.now, persist: false)
         end
       end

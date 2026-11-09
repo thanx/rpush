@@ -66,4 +66,7 @@ Gem::Specification.new do |s|
   # source. 1.7+ dropped the precompiled 2.7 build. Only used by the active_record
   # test client; production rpush uses the redis store.
   s.add_development_dependency 'sqlite3', '~> 1.6.0'
+  # ActiveSupport 6.x and 7.0 pass quirks_mode to JSON serialization.
+  # json 3.x rejects that option. Keep the development test bundle on 2.x.
+  s.add_development_dependency 'json', '< 3'
 end
