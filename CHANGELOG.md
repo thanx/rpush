@@ -2,6 +2,10 @@
 
 ## [Unreleased](https://github.com/rpush/rpush/tree/HEAD)
 
+**Thanx fork:**
+
+* Optional pre-send admission hook (`config.admission`): refuses a notification before any provider IO, fails closed on hook errors, records the refusal as a terminal failure and fires `notification_refused`. Adds the Redis `admission_ref` attribute and the in-memory `admission_context`.
+
 **Merged pull requests:**
 
 * Support for FCMv1 [\#620](https://github.com/rpush/rpush/pull/620) ([mirkode](https://github.com/mirkode)), [\#660](https://github.com/rpush/rpush/pull/660) ([AnilRh](https://github.com/AnilRh)) and [\#673](https://github.com/rpush/rpush/pull/673) ([SixiS](https://github.com/SixiS), [Henridv](https://github.com/Henridv) & [benlangfeld](https://github.com/benlangfeld))

@@ -78,6 +78,12 @@ module Rpush
         # that callers which never set it are indistinguishable from today.
         attribute :priority_class, :integer, default: PRIORITY_CLASS_DEFAULT
 
+        # Opaque reference the host application's pre-send admission hook resolves at
+        # dispatch (see Rpush::Daemon::Admission). Stored with the notification so the
+        # binding is visible from the moment the notification is; never part of any
+        # provider payload. Absent on every notification created without one.
+        attribute :admission_ref, :string
+
         # When the notification entered the pending set. Stamped by a before_create
         # callback rather than an attribute default, because Modis evaluates `default:`
         # once at class-definition time -- a `default: Time.now` would brand every

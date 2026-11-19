@@ -24,7 +24,7 @@ module Rpush
 
         def perform
           @batch.each_notification do |notification|
-            prepare_async_post(notification)
+            prepare_async_post(notification) if admitted?(notification)
           end
 
           # Send all preprocessed requests at once

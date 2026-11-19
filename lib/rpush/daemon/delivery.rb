@@ -4,6 +4,12 @@ module Rpush
       include Reflectable
       include Loggable
 
+      # Pre-send admission for one notification of this delivery's batch; see Admission.
+      # A refused notification is already recorded on the batch: skip it entirely.
+      def admitted?(notification)
+        Admission.admit(notification, @batch)
+      end
+
       def mark_retryable(notification, deliver_after, error = nil)
         if notification.fail_after && notification.fail_after < Time.now
           @batch.mark_failed(notification, nil, "Notification failed to be delivered before #{notification.fail_after.strftime('%Y-%m-%d %H:%M:%S')}.")

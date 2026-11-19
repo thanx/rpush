@@ -9,7 +9,10 @@ module Rpush
           @connection = Rpush::Daemon::TcpConnection.new(@app, @host, @port)
         end
 
+        # See Dispatcher::Http#dispatch.
         def dispatch(payload)
+          return payload.batch.notification_processed unless Admission.admit(payload.notification, payload.batch)
+
           @delivery_class.new(@app, @connection, payload.notification, payload.batch).perform
         end
 

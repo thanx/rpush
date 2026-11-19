@@ -23,6 +23,8 @@ module Rpush
         def perform
           @batch.each_notification do |notification|
             begin
+              next unless admitted?(notification)
+
               prepare_async_post(notification)
             rescue OpenSSL::SSL::SSLError => error
               # Building the request for THIS notification raised before it ever got a
